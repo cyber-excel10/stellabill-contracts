@@ -146,18 +146,15 @@ pub fn list_subscriptions_by_subscriber(
     let mut last_found_id = start_from_id;
 
     for id in start_from_id..next_id {
-        match env.storage().instance().get::<u32, Subscription>(&id) {
-            Some(sub) => {
-                if sub.subscriber == subscriber {
-                    subscription_ids.push_back(id);
-                    count += 1;
-                    last_found_id = id;
-                    if count >= limit {
-                        break;
-                    }
+        if let Some(sub) = env.storage().instance().get::<u32, Subscription>(&id) {
+            if sub.subscriber == subscriber {
+                subscription_ids.push_back(id);
+                count += 1;
+                last_found_id = id;
+                if count >= limit {
+                    break;
                 }
             }
-            None => {}
         }
     }
 

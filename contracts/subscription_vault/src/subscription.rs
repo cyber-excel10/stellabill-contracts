@@ -23,6 +23,7 @@ use crate::state_machine::validate_status_transition;
 use crate::types::{DataKey, Error, PlanTemplate, Subscription, SubscriptionStatus};
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
+#[allow(dead_code)]
 pub fn next_id(env: &Env) -> u32 {
     let key = Symbol::new(env, "next_id");
     let storage = env.storage().instance();

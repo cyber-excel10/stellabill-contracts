@@ -49,7 +49,7 @@ pub fn do_set_metadata(
     }
 
     // Validate key/value sizes
-    if key.len() == 0 || key.len() > MAX_METADATA_KEY_LENGTH {
+    if key.is_empty() || key.len() > MAX_METADATA_KEY_LENGTH {
         return Err(Error::MetadataKeyTooLong);
     }
     if value.len() > MAX_METADATA_VALUE_LENGTH {
