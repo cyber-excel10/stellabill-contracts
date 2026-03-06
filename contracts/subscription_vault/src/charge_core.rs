@@ -33,6 +33,7 @@
 use crate::queries::get_subscription;
 use crate::safe_math::safe_sub_balance;
 use crate::state_machine::validate_status_transition;
+use crate::types::LifetimeCapReachedEvent;
 use crate::types::{
     BillingPeriodSnapshot, Error, LifetimeCapReachedEvent, ProtocolFeeSkimmedEvent,
     SubscriptionChargedEvent, SubscriptionStatus, UsageCapReachedEvent,
@@ -388,6 +389,7 @@ pub fn charge_one(
                     subscription_id,
                     merchant: sub.merchant.clone(),
                     amount: net_amount,
+                    amount: sub.amount,
                     lifetime_charged: sub.lifetime_charged,
                 },
             );

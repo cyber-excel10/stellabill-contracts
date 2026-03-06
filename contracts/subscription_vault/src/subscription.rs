@@ -58,6 +58,12 @@ pub fn do_create_subscription(
     lifetime_cap: Option<i128>,
 ) -> Result<u32, Error> {
     subscriber.require_auth();
+
+    // Blocklist check: prevent blocklisted subscribers from creating subscriptions
+    if crate::blocklist::is_blocklisted(env, &subscriber) {
+        return Err(Error::SubscriberBlocklisted);
+    }
+
     validate_non_negative(amount)?;
     if interval_seconds == 0 {
         return Err(Error::InvalidInput);
@@ -81,6 +87,7 @@ pub fn do_create_subscription(
         status: SubscriptionStatus::Active,
         prepaid_balance: 0i128,
         usage_enabled,
+        expiration: None,
         billing_anchor_timestamp: now,
         current_period_index: 0,
         current_period_usage_units: 0,
@@ -133,6 +140,11 @@ pub fn do_deposit_funds(
     amount: i128,
 ) -> Result<(), Error> {
     subscriber.require_auth();
+
+    // Blocklist check: prevent blocklisted subscribers from depositing funds
+    if crate::blocklist::is_blocklisted(env, &subscriber) {
+        return Err(Error::SubscriberBlocklisted);
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // CHECKS: Validate all preconditions before any state mutations
@@ -346,6 +358,11 @@ pub fn do_create_subscription_from_plan(
     plan_template_id: u32,
 ) -> Result<u32, Error> {
     subscriber.require_auth();
+
+    // Blocklist check: prevent blocklisted subscribers from creating subscriptions
+    if crate::blocklist::is_blocklisted(env, &subscriber) {
+        return Err(Error::SubscriberBlocklisted);
+    }
 
     let plan = get_plan_template(env, plan_template_id)?;
 
