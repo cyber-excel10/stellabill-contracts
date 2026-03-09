@@ -2,7 +2,7 @@ use soroban_sdk::{symbol_short, Address, Env, Vec};
 
 use crate::types::{
     BillingStatement, BillingStatementFinalization, BillingStatementPersistedEvent,
-    BillingStatementRef, DataKey, Error,
+    BillingStatementRef, DataKey, Error, SubscriptionStatus,
 };
 
 fn to_ref(statement: &BillingStatement) -> BillingStatementRef {
@@ -17,7 +17,8 @@ fn contains_ref(items: &Vec<BillingStatementRef>, target: &BillingStatementRef) 
     let mut i = 0;
     while i < items.len() {
         let item = items.get(i).unwrap();
-        if item.subscription_id == target.subscription_id && item.period_index == target.period_index
+        if item.subscription_id == target.subscription_id
+            && item.period_index == target.period_index
         {
             return true;
         }
@@ -27,7 +28,8 @@ fn contains_ref(items: &Vec<BillingStatementRef>, target: &BillingStatementRef) 
 }
 
 pub fn upsert_statement(env: &Env, statement: BillingStatement) {
-    let statement_key = DataKey::BillingStatement(statement.subscription_id, statement.period_index);
+    let statement_key =
+        DataKey::BillingStatement(statement.subscription_id, statement.period_index);
     env.storage().instance().set(&statement_key, &statement);
 
     let statement_ref = to_ref(&statement);
@@ -51,7 +53,9 @@ pub fn upsert_statement(env: &Env, statement: BillingStatement) {
         .unwrap_or(Vec::new(env));
     if !contains_ref(&merchant_refs, &statement_ref) {
         merchant_refs.push_back(statement_ref);
-        env.storage().instance().set(&merchant_index_key, &merchant_refs);
+        env.storage()
+            .instance()
+            .set(&merchant_index_key, &merchant_refs);
     }
 
     env.events().publish(
@@ -65,7 +69,11 @@ pub fn upsert_statement(env: &Env, statement: BillingStatement) {
     );
 }
 
-pub fn get_statement(env: &Env, subscription_id: u32, period_index: u32) -> Result<BillingStatement, Error> {
+pub fn get_statement(
+    env: &Env,
+    subscription_id: u32,
+    period_index: u32,
+) -> Result<BillingStatement, Error> {
     env.storage()
         .instance()
         .get(&DataKey::BillingStatement(subscription_id, period_index))
@@ -79,7 +87,11 @@ pub fn list_statements_by_subscription(
     limit: u32,
 ) -> Vec<BillingStatement> {
     let index_key = DataKey::BillingStatementsBySubscription(subscription_id);
-    let refs: Vec<BillingStatementRef> = env.storage().instance().get(&index_key).unwrap_or(Vec::new(env));
+    let refs: Vec<BillingStatementRef> = env
+        .storage()
+        .instance()
+        .get(&index_key)
+        .unwrap_or(Vec::new(env));
     if limit == 0 || start >= refs.len() {
         return Vec::new(env);
     }
@@ -94,10 +106,13 @@ pub fn list_statements_by_subscription(
     let mut i = start;
     while i < end {
         let r = refs.get(i).unwrap();
-        if let Some(statement) = env
-            .storage()
-            .instance()
-            .get::<_, BillingStatement>(&DataKey::BillingStatement(r.subscription_id, r.period_index))
+        if let Some(statement) =
+            env.storage()
+                .instance()
+                .get::<_, BillingStatement>(&DataKey::BillingStatement(
+                    r.subscription_id,
+                    r.period_index,
+                ))
         {
             out.push_back(statement);
         }
@@ -115,7 +130,11 @@ pub fn list_statements_by_merchant_time_range(
     limit: u32,
 ) -> Vec<BillingStatement> {
     let index_key = DataKey::BillingStatementsByMerchant(merchant);
-    let refs: Vec<BillingStatementRef> = env.storage().instance().get(&index_key).unwrap_or(Vec::new(env));
+    let refs: Vec<BillingStatementRef> = env
+        .storage()
+        .instance()
+        .get(&index_key)
+        .unwrap_or(Vec::new(env));
     if limit == 0 {
         return Vec::new(env);
     }
@@ -144,10 +163,13 @@ pub fn list_statements_by_merchant_time_range(
     let mut j = start;
     while j < end {
         let r = filtered.get(j).unwrap();
-        if let Some(statement) = env
-            .storage()
-            .instance()
-            .get::<_, BillingStatement>(&DataKey::BillingStatement(r.subscription_id, r.period_index))
+        if let Some(statement) =
+            env.storage()
+                .instance()
+                .get::<_, BillingStatement>(&DataKey::BillingStatement(
+                    r.subscription_id,
+                    r.period_index,
+                ))
         {
             out.push_back(statement);
         }
@@ -156,24 +178,25 @@ pub fn list_statements_by_merchant_time_range(
     out
 }
 
-pub fn build_statement(
-    env: &Env,
-    subscription_id: u32,
-    period_index: u32,
-    merchant: Address,
-    subscriber: Address,
-    period_start_timestamp: u64,
-    period_end_timestamp: u64,
-    total_amount_charged: i128,
-    total_usage_units: i128,
-    protocol_fee_amount: i128,
-    net_amount_to_merchant: i128,
-    refund_amount: i128,
-    status_flags: u32,
-    subscription_status: crate::types::SubscriptionStatus,
-    finalized_by: BillingStatementFinalization,
-    finalized_at: u64,
-) -> Result<BillingStatement, Error> {
+pub struct BillingStatementInput {
+    pub subscription_id: u32,
+    pub period_index: u32,
+    pub merchant: Address,
+    pub subscriber: Address,
+    pub period_start_timestamp: u64,
+    pub period_end_timestamp: u64,
+    pub total_amount_charged: i128,
+    pub total_usage_units: i128,
+    pub protocol_fee_amount: i128,
+    pub net_amount_to_merchant: i128,
+    pub refund_amount: i128,
+    pub status_flags: u32,
+    pub subscription_status: SubscriptionStatus,
+    pub finalized_by: BillingStatementFinalization,
+    pub finalized_at: u64,
+}
+
+pub fn build_statement(env: &Env, input: BillingStatementInput) -> Result<BillingStatement, Error> {
     let token: Address = env
         .storage()
         .instance()
@@ -181,22 +204,22 @@ pub fn build_statement(
         .ok_or(Error::NotInitialized)?;
 
     Ok(BillingStatement {
-        subscription_id,
-        period_index,
-        snapshot_period_index: period_index,
-        merchant,
-        subscriber,
+        subscription_id: input.subscription_id,
+        period_index: input.period_index,
+        snapshot_period_index: input.period_index,
+        merchant: input.merchant,
+        subscriber: input.subscriber,
         token,
-        period_start_timestamp,
-        period_end_timestamp,
-        total_amount_charged,
-        total_usage_units,
-        protocol_fee_amount,
-        net_amount_to_merchant,
-        refund_amount,
-        status_flags,
-        subscription_status,
-        finalized_by,
-        finalized_at,
+        period_start_timestamp: input.period_start_timestamp,
+        period_end_timestamp: input.period_end_timestamp,
+        total_amount_charged: input.total_amount_charged,
+        total_usage_units: input.total_usage_units,
+        protocol_fee_amount: input.protocol_fee_amount,
+        net_amount_to_merchant: input.net_amount_to_merchant,
+        refund_amount: input.refund_amount,
+        status_flags: input.status_flags,
+        subscription_status: input.subscription_status,
+        finalized_by: input.finalized_by,
+        finalized_at: input.finalized_at,
     })
 }
