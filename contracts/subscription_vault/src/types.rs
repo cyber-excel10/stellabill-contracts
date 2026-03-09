@@ -169,54 +169,6 @@ impl Error {
     }
 }
 
-/// Result of charging one subscription in a batch.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BillingStatementFinalization {
-    PeriodClosed = 0,
-    Cancellation = 1,
-    FinalSettlement = 2,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BillingStatementRef {
-    pub subscription_id: u32,
-    pub period_index: u32,
-    pub period_end_timestamp: u64,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BillingStatement {
-    pub subscription_id: u32,
-    pub period_index: u32,
-    pub snapshot_period_index: u32,
-    pub merchant: Address,
-    pub subscriber: Address,
-    pub token: Address,
-    pub period_start_timestamp: u64,
-    pub period_end_timestamp: u64,
-    pub total_amount_charged: i128,
-    pub total_usage_units: i128,
-    pub protocol_fee_amount: i128,
-    pub net_amount_to_merchant: i128,
-    pub refund_amount: i128,
-    pub status_flags: u32,
-    pub subscription_status: SubscriptionStatus,
-    pub finalized_by: BillingStatementFinalization,
-    pub finalized_at: u64,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BillingStatementPersistedEvent {
-    pub subscription_id: u32,
-    pub period_index: u32,
-    pub merchant: Address,
-    pub finalized_by: BillingStatementFinalization,
-}
-
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct BatchChargeResult {

@@ -46,6 +46,7 @@ fn set_merchant_balance(env: &Env, merchant: &Address, token: &Address, balance:
 }
 
 /// Credit merchant balance (used when subscription charges process).
+#[allow(dead_code)]
 pub fn credit_merchant_balance(env: &Env, merchant: &Address, amount: i128) -> Result<(), Error> {
     let token_addr = crate::admin::get_token(env)?;
     credit_merchant_balance_for_token(env, merchant, &token_addr, amount)
