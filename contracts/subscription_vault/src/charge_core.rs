@@ -32,8 +32,11 @@
 
 use crate::queries::get_subscription;
 use crate::safe_math::safe_sub_balance;
+use crate::statements::append_statement;
 use crate::state_machine::validate_status_transition;
-use crate::types::{Error, LifetimeCapReachedEvent, SubscriptionChargedEvent, SubscriptionStatus};
+use crate::types::{
+    BillingChargeKind, Error, LifetimeCapReachedEvent, SubscriptionChargedEvent, SubscriptionStatus,
+};
 use soroban_sdk::{symbol_short, Env, Symbol};
 
 const KEY_CHARGED_PERIOD: Symbol = symbol_short!("cp");
@@ -181,6 +184,15 @@ pub fn charge_one(
             }
 
             storage.set(&subscription_id, &sub);
+            append_statement(
+                env,
+                subscription_id,
+                sub.amount,
+                sub.merchant.clone(),
+                BillingChargeKind::Interval,
+                next_allowed.saturating_sub(sub.interval_seconds),
+                now,
+            );
 
             // Record charged period and optional idempotency key (bounded storage)
             storage.set(&charged_period_key(subscription_id), &period_index);
@@ -345,5 +357,14 @@ pub fn charge_usage_one(env: &Env, subscription_id: u32, usage_amount: i128) -> 
     }
 
     env.storage().instance().set(&subscription_id, &sub);
+    append_statement(
+        env,
+        subscription_id,
+        usage_amount,
+        sub.merchant.clone(),
+        BillingChargeKind::Usage,
+        env.ledger().timestamp(),
+        env.ledger().timestamp(),
+    );
     Ok(())
 }

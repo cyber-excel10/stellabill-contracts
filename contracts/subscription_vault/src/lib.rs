@@ -15,6 +15,7 @@ mod queries;
 mod reentrancy;
 pub mod safe_math;
 mod state_machine;
+mod statements;
 mod subscription;
 mod types;
 
@@ -24,12 +25,12 @@ use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
 pub use queries::compute_next_charge_info;
 pub use state_machine::{can_transition, get_allowed_transitions, validate_status_transition};
 pub use types::{
-    BatchChargeResult, BatchWithdrawResult, CapInfo, ContractSnapshot, DataKey,
-    EmergencyStopDisabledEvent, EmergencyStopEnabledEvent, Error, FundsDepositedEvent,
-    LifetimeCapReachedEvent, MerchantWithdrawalEvent, MigrationExportEvent, NextChargeInfo,
-    OneOffChargedEvent, PlanTemplate, RecoveryEvent, RecoveryReason, Subscription,
-    SubscriptionCancelledEvent, SubscriptionChargedEvent, SubscriptionCreatedEvent,
-    SubscriptionPausedEvent, SubscriptionResumedEvent, SubscriptionStatus, SubscriptionSummary,
+    BatchChargeResult, BatchWithdrawResult, BillingChargeKind, BillingStatement, BillingStatementsPage,
+    CapInfo, ContractSnapshot, DataKey, EmergencyStopDisabledEvent, EmergencyStopEnabledEvent, Error,
+    FundsDepositedEvent, LifetimeCapReachedEvent, MerchantWithdrawalEvent, MigrationExportEvent,
+    NextChargeInfo, OneOffChargedEvent, PlanTemplate, RecoveryEvent, RecoveryReason, Subscription,
+    SubscriptionCancelledEvent, SubscriptionChargedEvent, SubscriptionCreatedEvent, SubscriptionPausedEvent,
+    SubscriptionResumedEvent, SubscriptionStatus, SubscriptionSummary,
 };
 
 /// Maximum subscription ID this contract will ever allocate.
@@ -540,6 +541,47 @@ impl SubscriptionVault {
     /// When no cap is configured all cap-related fields return `None` / `false`.
     pub fn get_cap_info(env: Env, subscription_id: u32) -> Result<CapInfo, Error> {
         queries::get_cap_info(&env, subscription_id)
+    }
+
+    /// Return subscription billing statements using offset/limit pagination.
+    ///
+    /// When `newest_first` is true (recommended for infinite scroll), offset 0
+    /// starts from the most recent statement.
+    pub fn get_sub_statements_offset(
+        env: Env,
+        subscription_id: u32,
+        offset: u32,
+        limit: u32,
+        newest_first: bool,
+    ) -> Result<BillingStatementsPage, Error> {
+        statements::get_statements_by_subscription_offset(
+            &env,
+            subscription_id,
+            offset,
+            limit,
+            newest_first,
+        )
+    }
+
+    /// Return subscription billing statements using cursor pagination.
+    ///
+    /// - `cursor`: sequence index to start from (inclusive); pass `None` for first page.
+    /// - `limit`: maximum number of statements to return.
+    /// - `newest_first`: return recent history first when true.
+    pub fn get_sub_statements_cursor(
+        env: Env,
+        subscription_id: u32,
+        cursor: Option<u32>,
+        limit: u32,
+        newest_first: bool,
+    ) -> Result<BillingStatementsPage, Error> {
+        statements::get_statements_by_subscription_cursor(
+            &env,
+            subscription_id,
+            cursor,
+            limit,
+            newest_first,
+        )
     }
 }
 

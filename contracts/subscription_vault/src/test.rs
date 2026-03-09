@@ -1971,3 +1971,84 @@ fn test_reentrancy_protection_documentation() {
 
     assert!(true); // Placeholder to indicate test passed
 }
+
+#[test]
+fn test_billing_statements_offset_pagination_newest_first() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(T0);
+    let (client, token, _admin) = setup_contract(&env);
+
+    let subscriber = Address::generate(&env);
+    let merchant = Address::generate(&env);
+    soroban_sdk::token::StellarAssetClient::new(&env, &token).mint(&subscriber, &1_000_000_000i128);
+
+    let id = client.create_subscription(
+        &subscriber,
+        &merchant,
+        &1_000_000i128,
+        &INTERVAL,
+        &true,
+        &None::<i128>,
+    );
+    client.deposit_funds(&id, &subscriber, &200_000_000i128);
+
+    for i in 1..=6 {
+        env.ledger().set_timestamp(T0 + (i as u64 * INTERVAL));
+        client.charge_subscription(&id);
+    }
+
+    let page1 = client.get_sub_statements_offset(&id, &0, &2, &true);
+    assert_eq!(page1.total, 6);
+    assert_eq!(page1.statements.len(), 2);
+    assert_eq!(page1.statements.get(0).unwrap().sequence, 5);
+    assert_eq!(page1.statements.get(1).unwrap().sequence, 4);
+
+    let page2 = client.get_sub_statements_offset(&id, &2, &2, &true);
+    assert_eq!(page2.statements.len(), 2);
+    assert_eq!(page2.statements.get(0).unwrap().sequence, 3);
+    assert_eq!(page2.statements.get(1).unwrap().sequence, 2);
+}
+
+#[test]
+fn test_billing_statements_cursor_pagination_boundaries() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(T0);
+    let (client, token, _admin) = setup_contract(&env);
+
+    let subscriber = Address::generate(&env);
+    let merchant = Address::generate(&env);
+    soroban_sdk::token::StellarAssetClient::new(&env, &token).mint(&subscriber, &1_000_000_000i128);
+
+    let id = client.create_subscription(
+        &subscriber,
+        &merchant,
+        &1_000_000i128,
+        &INTERVAL,
+        &true,
+        &None::<i128>,
+    );
+    client.deposit_funds(&id, &subscriber, &200_000_000i128);
+
+    for i in 1..=4 {
+        env.ledger().set_timestamp(T0 + (i as u64 * INTERVAL));
+        client.charge_subscription(&id);
+    }
+
+    let first = client.get_sub_statements_cursor(&id, &None::<u32>, &3, &true);
+    assert_eq!(first.statements.len(), 3);
+    assert_eq!(first.statements.get(0).unwrap().sequence, 3);
+    assert_eq!(first.statements.get(2).unwrap().sequence, 1);
+    assert_eq!(first.next_cursor, Some(0));
+
+    let second = client.get_sub_statements_cursor(&id, &first.next_cursor, &3, &true);
+    assert_eq!(second.statements.len(), 1);
+    assert_eq!(second.statements.get(0).unwrap().sequence, 0);
+    assert_eq!(second.next_cursor, None);
+
+    let invalid_cursor = client.get_sub_statements_cursor(&id, &Some(99u32), &2, &true);
+    assert_eq!(invalid_cursor.statements.len(), 0);
+    assert_eq!(invalid_cursor.next_cursor, None);
+    assert_eq!(invalid_cursor.total, 4);
+}

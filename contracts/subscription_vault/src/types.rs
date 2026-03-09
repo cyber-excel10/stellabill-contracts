@@ -3,7 +3,7 @@
 //! Kept in a separate module to reduce merge conflicts when editing state machine
 //! or contract entrypoints.
 
-use soroban_sdk::{contracterror, contracttype, Address};
+use soroban_sdk::{contracterror, contracttype, Address, Vec};
 
 /// Storage keys for secondary indices.
 #[contracttype]
@@ -323,6 +323,45 @@ pub struct CapInfo {
     pub remaining_cap: Option<i128>,
     /// True when the cap has been reached and no further charges are allowed.
     pub cap_reached: bool,
+}
+
+/// Canonical charge category used for billing statement history.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BillingChargeKind {
+    Interval = 0,
+    Usage = 1,
+    OneOff = 2,
+}
+
+/// Immutable billing statement row for a subscription charge action.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BillingStatement {
+    pub subscription_id: u32,
+    /// Monotonic per-subscription sequence number (starts at 0).
+    pub sequence: u32,
+    /// Timestamp the charge operation was processed.
+    pub charged_at: u64,
+    /// Charge period start, in ledger timestamp seconds.
+    pub period_start: u64,
+    /// Charge period end, in ledger timestamp seconds.
+    pub period_end: u64,
+    /// Debited amount in token base units.
+    pub amount: i128,
+    pub merchant: Address,
+    pub kind: BillingChargeKind,
+}
+
+/// Paginated page of billing statements.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct BillingStatementsPage {
+    pub statements: Vec<BillingStatement>,
+    /// Cursor for the next page. `None` means no more rows.
+    pub next_cursor: Option<u32>,
+    /// Total statements recorded for the subscription.
+    pub total: u32,
 }
 
 /// Event emitted when emergency stop is enabled.

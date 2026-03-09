@@ -23,8 +23,9 @@
 
 use crate::queries::get_subscription;
 use crate::safe_math::{safe_add_balance, validate_non_negative};
+use crate::statements::append_statement;
 use crate::state_machine::validate_status_transition;
-use crate::types::{DataKey, Error, PlanTemplate, Subscription, SubscriptionStatus};
+use crate::types::{BillingChargeKind, DataKey, Error, PlanTemplate, Subscription, SubscriptionStatus};
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
 #[allow(dead_code)]
@@ -254,6 +255,15 @@ pub fn do_charge_one_off(
         .ok_or(Error::Overflow)?;
 
     env.storage().instance().set(&subscription_id, &sub);
+    append_statement(
+        env,
+        subscription_id,
+        amount,
+        sub.merchant.clone(),
+        BillingChargeKind::OneOff,
+        env.ledger().timestamp(),
+        env.ledger().timestamp(),
+    );
     Ok(())
 }
 
