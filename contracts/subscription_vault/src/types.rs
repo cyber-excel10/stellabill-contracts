@@ -706,4 +706,6 @@ pub struct PartialRefundEvent {
     pub subscriber: Address,
     /// Amount refunded in token base units.
     pub amount: i128,
+    /// Ledger timestamp when the refund was processed.
+    pub timestamp: u64,
 }

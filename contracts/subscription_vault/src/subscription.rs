@@ -549,6 +549,20 @@ pub fn do_withdraw_subscriber_funds(
     Ok(())
 }
 
+/// Process a partial refund against a subscription's remaining prepaid balance.
+///
+/// # Authorization
+/// Only the contract admin may authorize partial refunds. The `subscriber`
+/// parameter is validated against the subscription record but does **not**
+/// require the subscriber's own signature — the admin acts on their behalf.
+///
+/// # Preconditions
+/// - `amount > 0`
+/// - `amount <= subscription.prepaid_balance`
+/// - `subscriber` matches `subscription.subscriber`
+///
+/// # CEI pattern
+/// State is updated before the token transfer to prevent reentrancy.
 pub fn do_partial_refund(
     env: &Env,
     admin: Address,
@@ -556,9 +570,8 @@ pub fn do_partial_refund(
     subscriber: Address,
     amount: i128,
 ) -> Result<(), Error> {
+    // Checks: admin authorization and input validation first.
     super::require_admin_auth(env, &admin)?;
-
-    subscriber.require_auth();
 
     if amount <= 0 {
         return Err(Error::InvalidAmount);
@@ -567,23 +580,22 @@ pub fn do_partial_refund(
     let mut sub = get_subscription(env, subscription_id)?;
 
     if subscriber != sub.subscriber {
-        return Err(Error::Forbidden);
+        return Err(Error::Unauthorized);
     }
 
     if amount > sub.prepaid_balance {
         return Err(Error::InsufficientBalance);
     }
 
-    // Effects: update internal state before performing external token transfer.
+    // Effects: debit balance before external call.
     sub.prepaid_balance = sub
         .prepaid_balance
         .checked_sub(amount)
         .ok_or(Error::Overflow)?;
     env.storage().instance().set(&subscription_id, &sub);
 
-    // Interactions: transfer refund amount from contract to subscriber.
-    let token_addr = sub.token.clone();
-    let token_client = soroban_sdk::token::Client::new(env, &token_addr);
+    // Interactions: transfer refund from vault to subscriber.
+    let token_client = soroban_sdk::token::Client::new(env, &sub.token);
     token_client.transfer(&env.current_contract_address(), &subscriber, &amount);
 
     env.events().publish(
@@ -592,6 +604,7 @@ pub fn do_partial_refund(
             subscription_id,
             subscriber,
             amount,
+            timestamp: env.ledger().timestamp(),
         },
     );
 
