@@ -36,13 +36,14 @@ pub use types::{
     BillingCompactedEvent, BillingCompactionSummary, BillingRetentionConfig, BillingStatement,
     BillingStatementAggregate, BillingStatementsPage, CapInfo, ContractSnapshot, DataKey,
     EmergencyStopDisabledEvent, EmergencyStopEnabledEvent, Error, FundsDepositedEvent,
-    LifetimeCapReachedEvent, MerchantWithdrawalEvent, MetadataDeletedEvent, MetadataSetEvent,
-    MigrationExportEvent, NextChargeInfo, OneOffChargedEvent, OracleConfig, OraclePrice,
-    PartialRefundEvent, PlanTemplate, PlanTemplateUpdatedEvent, RecoveryEvent, RecoveryReason,
-    Subscription, SubscriptionCancelledEvent, SubscriptionChargedEvent, SubscriptionCreatedEvent,
+    LifetimeCapReachedEvent, MerchantPausedEvent, MerchantUnpausedEvent, MerchantWithdrawalEvent,
+    MetadataDeletedEvent, MetadataSetEvent, MigrationExportEvent, NextChargeInfo,
+    OneOffChargedEvent, OracleConfig, OraclePrice, PartialRefundEvent, PlanTemplate,
+    PlanTemplateUpdatedEvent, RecoveryEvent, RecoveryReason, Subscription,
+    SubscriptionCancelledEvent, SubscriptionChargedEvent, SubscriptionCreatedEvent,
     SubscriptionMigratedEvent, SubscriptionPausedEvent, SubscriptionResumedEvent,
-    SubscriptionStatus, SubscriptionSummary, MerchantPausedEvent, MerchantUnpausedEvent,
-    MAX_METADATA_KEYS, MAX_METADATA_KEY_LENGTH, MAX_METADATA_VALUE_LENGTH,
+    SubscriptionStatus, SubscriptionSummary, MAX_METADATA_KEYS, MAX_METADATA_KEY_LENGTH,
+    MAX_METADATA_VALUE_LENGTH,
 };
 
 /// Maximum subscription ID this contract will ever allocate.
