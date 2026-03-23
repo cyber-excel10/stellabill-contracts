@@ -23,7 +23,9 @@ use crate::state_machine::validate_status_transition;
 use crate::statements::append_statement;
 use crate::types::{
     BillingChargeKind, DataKey, Error, PartialRefundEvent, PlanTemplate, PlanTemplateUpdatedEvent,
-    Subscription, SubscriptionMigratedEvent, SubscriptionStatus,
+    Subscription, SubscriptionCancelledEvent, SubscriptionChargedEvent, SubscriptionCreatedEvent,
+    SubscriptionMigratedEvent, SubscriptionPausedEvent, SubscriptionResumedEvent,
+    SubscriptionStatus,
 };
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
@@ -361,6 +363,16 @@ pub fn do_cancel_subscription(
     sub.status = SubscriptionStatus::Cancelled;
 
     env.storage().instance().set(&subscription_id, &sub);
+
+    env.events().publish(
+        (Symbol::new(env, "subscription_cancelled"), subscription_id),
+        SubscriptionCancelledEvent {
+            subscription_id,
+            authorizer,
+            refund_amount: sub.prepaid_balance,
+        },
+    );
+
     Ok(())
 }
 
@@ -372,10 +384,24 @@ pub fn do_pause_subscription(
     authorizer.require_auth();
 
     let mut sub = get_subscription(env, subscription_id)?;
+
+    if authorizer != sub.subscriber && authorizer != sub.merchant {
+        return Err(Error::Forbidden);
+    }
+
     validate_status_transition(&sub.status, &SubscriptionStatus::Paused)?;
     sub.status = SubscriptionStatus::Paused;
 
     env.storage().instance().set(&subscription_id, &sub);
+
+    env.events().publish(
+        (Symbol::new(env, "subscription_paused"), subscription_id),
+        SubscriptionPausedEvent {
+            subscription_id,
+            authorizer,
+        },
+    );
+
     Ok(())
 }
 
@@ -387,10 +413,24 @@ pub fn do_resume_subscription(
     authorizer.require_auth();
 
     let mut sub = get_subscription(env, subscription_id)?;
+
+    if authorizer != sub.subscriber && authorizer != sub.merchant {
+        return Err(Error::Forbidden);
+    }
+
     validate_status_transition(&sub.status, &SubscriptionStatus::Active)?;
     sub.status = SubscriptionStatus::Active;
 
     env.storage().instance().set(&subscription_id, &sub);
+
+    env.events().publish(
+        (Symbol::new(env, "subscription_resumed"), subscription_id),
+        SubscriptionResumedEvent {
+            subscription_id,
+            authorizer,
+        },
+    );
+
     Ok(())
 }
 

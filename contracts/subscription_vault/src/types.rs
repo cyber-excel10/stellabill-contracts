@@ -36,6 +36,8 @@ pub enum DataKey {
     IdemKey(u32),
     /// Emergency stop flag - when true, critical operations are blocked. Discriminant 9.
     EmergencyStop,
+    /// Merchant-wide pause flag.
+    MerchantPaused(Address),
     BillingStatement(u32, u32),
     BillingStatementsBySubscription(u32),
     BillingStatementsByMerchant(Address),
@@ -197,6 +199,8 @@ pub enum Error {
     LifetimeCapReached = 1017,
     /// Contract is already initialized; init may only be called once.
     AlreadyInitialized = 1018,
+    /// Merchant-wide pause is active for this subscription.
+    MerchantPaused = 1019,
 
     // --- Metadata Errors (1023-1025) ---
     /// Metadata key limit reached for this subscription.
@@ -255,6 +259,7 @@ impl Error {
             Error::Reentrancy => 1016,
             Error::LifetimeCapReached => 1017,
             Error::AlreadyInitialized => 1018,
+            Error::MerchantPaused => 1019,
             Error::MetadataKeyLimitReached => 1023,
             Error::MetadataKeyTooLong => 1024,
             Error::MetadataValueTooLong => 1025,
@@ -689,4 +694,20 @@ pub struct PartialRefundEvent {
     pub subscriber: Address,
     /// Amount refunded in token base units.
     pub amount: i128,
+}
+
+/// Event emitted when a merchant enables their blanket pause.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct MerchantPausedEvent {
+    pub merchant: Address,
+    pub timestamp: u64,
+}
+
+/// Event emitted when a merchant disables their blanket pause.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct MerchantUnpausedEvent {
+    pub merchant: Address,
+    pub timestamp: u64,
 }

@@ -13,7 +13,7 @@
 //! See `docs/reentrancy.md` for details on the reentrancy threat model and mitigation.
 
 use crate::safe_math::validate_non_negative;
-use crate::types::Error;
+use crate::types::{DataKey, Error, MerchantPausedEvent, MerchantUnpausedEvent};
 use soroban_sdk::{token, Address, Env, Symbol};
 
 fn merchant_balance_key(
@@ -116,6 +116,56 @@ pub fn withdraw_merchant_funds_for_token(
     // ──────────────────────────────────────────────────────────────────────────
     let token_client = token::Client::new(env, &token_addr);
     token_client.transfer(&env.current_contract_address(), &merchant, &amount);
+
+    Ok(())
+}
+
+pub fn get_merchant_paused(env: &Env, merchant: Address) -> bool {
+    let key = DataKey::MerchantPaused(merchant);
+    env.storage().instance().get(&key).unwrap_or(false)
+}
+
+pub fn set_merchant_paused(env: &Env, merchant: Address, paused: bool) {
+    let key = DataKey::MerchantPaused(merchant);
+    env.storage().instance().set(&key, &paused);
+}
+
+pub fn pause_merchant(env: &Env, merchant: Address) -> Result<(), Error> {
+    merchant.require_auth();
+
+    if get_merchant_paused(env, merchant.clone()) {
+        return Ok(());
+    }
+
+    set_merchant_paused(env, merchant.clone(), true);
+
+    env.events().publish(
+        (Symbol::new(env, "merchant_paused"), merchant.clone()),
+        MerchantPausedEvent {
+            merchant,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+
+    Ok(())
+}
+
+pub fn unpause_merchant(env: &Env, merchant: Address) -> Result<(), Error> {
+    merchant.require_auth();
+
+    if !get_merchant_paused(env, merchant.clone()) {
+        return Ok(());
+    }
+
+    set_merchant_paused(env, merchant.clone(), false);
+
+    env.events().publish(
+        (Symbol::new(env, "merchant_unpaused"), merchant.clone()),
+        MerchantUnpausedEvent {
+            merchant,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
 
     Ok(())
 }

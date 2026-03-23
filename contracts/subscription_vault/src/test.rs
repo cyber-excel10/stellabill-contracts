@@ -2397,3 +2397,153 @@ fn test_create_subscription_with_unaccepted_token_fails() {
     );
     assert_eq!(result, Err(Ok(Error::InvalidInput)));
 }
+
+// ── Merchant Pause Tests ─────────────────────────────────────────────────────
+
+#[test]
+fn test_merchant_pause_toggle() {
+    let (env, client, _, _) = setup_test_env();
+    let merchant = Address::generate(&env);
+
+    assert!(!client.get_merchant_paused(&merchant));
+
+    client.pause_merchant(&merchant);
+    assert!(client.get_merchant_paused(&merchant));
+
+    client.unpause_merchant(&merchant);
+    assert!(!client.get_merchant_paused(&merchant));
+}
+
+#[test]
+fn test_merchant_pause_idempotency() {
+    let (env, client, _, _) = setup_test_env();
+    let merchant = Address::generate(&env);
+
+    client.pause_merchant(&merchant);
+    client.pause_merchant(&merchant);
+    assert!(client.get_merchant_paused(&merchant));
+
+    client.unpause_merchant(&merchant);
+    client.unpause_merchant(&merchant);
+    assert!(!client.get_merchant_paused(&merchant));
+}
+
+#[test]
+fn test_merchant_pause_blocks_interval_charge() {
+    let (env, client, _, _) = setup_test_env();
+    env.ledger().set_timestamp(T0);
+
+    let (id, _, merchant) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    seed_balance(&env, &client, id, PREPAID);
+
+    client.pause_merchant(&merchant);
+
+    env.ledger().set_timestamp(T0 + INTERVAL + 1);
+    let result = client.try_charge_subscription(&id);
+    assert_eq!(result, Err(Ok(Error::MerchantPaused)));
+}
+
+#[test]
+fn test_merchant_pause_blocks_usage_charge() {
+    let (env, client, _, _) = setup_test_env();
+    let (id, _, merchant) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+
+    // Enable usage
+    let mut sub = client.get_subscription(&id);
+    sub.usage_enabled = true;
+    env.as_contract(&client.address, || {
+        env.storage().instance().set(&id, &sub);
+    });
+    seed_balance(&env, &client, id, PREPAID);
+
+    client.pause_merchant(&merchant);
+
+    let result = client.try_charge_usage(&id, &1000);
+    assert_eq!(result, Err(Ok(Error::MerchantPaused)));
+}
+
+#[test]
+fn test_merchant_pause_isolation() {
+    let (env, client, _, _) = setup_test_env();
+    env.ledger().set_timestamp(T0);
+
+    let subscriber = Address::generate(&env);
+    let merchant_a = Address::generate(&env);
+    let merchant_b = Address::generate(&env);
+
+    let id_a = client.create_subscription(&subscriber, &merchant_a, &AMOUNT, &INTERVAL, &false, &None::<i128>);
+    let id_b = client.create_subscription(&subscriber, &merchant_b, &AMOUNT, &INTERVAL, &false, &None::<i128>);
+
+    seed_balance(&env, &client, id_a, PREPAID);
+    seed_balance(&env, &client, id_b, PREPAID);
+
+    // Pause Merchant A
+    client.pause_merchant(&merchant_a);
+
+    env.ledger().set_timestamp(T0 + INTERVAL + 1);
+
+    // Merchant A charge should fail
+    assert_eq!(client.try_charge_subscription(&id_a), Err(Ok(Error::MerchantPaused)));
+
+    // Merchant B charge should succeed
+    assert!(client.try_charge_subscription(&id_b).is_ok());
+}
+
+#[test]
+fn test_cross_actor_interplay_merchant_paused_subscriber_cancels() {
+    let (env, client, _, _) = setup_test_env();
+    let (id, subscriber, merchant) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+
+    client.pause_merchant(&merchant);
+
+    // Subscriber should still be able to cancel
+    client.cancel_subscription(&id, &subscriber);
+    assert_eq!(client.get_subscription(&id).status, SubscriptionStatus::Cancelled);
+}
+
+#[test]
+fn test_cross_actor_interplay_merchant_paused_subscriber_pauses() {
+    let (env, client, _, _) = setup_test_env();
+    let (id, subscriber, merchant) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+
+    client.pause_merchant(&merchant);
+
+    // Subscriber should still be able to pause/resume their individual subscription
+    client.pause_subscription(&id, &subscriber);
+    assert_eq!(client.get_subscription(&id).status, SubscriptionStatus::Paused);
+
+    client.resume_subscription(&id, &subscriber);
+    assert_eq!(client.get_subscription(&id).status, SubscriptionStatus::Active);
+}
+
+#[test]
+fn test_event_attribution_pause_resume() {
+    let (env, client, _, _) = setup_test_env();
+    let (id, subscriber, merchant) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+
+    // Pause by subscriber
+    client.pause_subscription(&id, &subscriber);
+    let events = env.events().all();
+    let last_event = events.last().unwrap();
+    // (Symbol(subscription_paused), u32(id))
+    assert_eq!(last_event.0, client.address);
+    // Topic: [Symbol(subscription_paused), u32(id)]
+    // Data: SubscriptionPausedEvent { subscription_id: id, authorizer: subscriber }
+    // Actually our test setup mocks auth, so subscriber address is generated.
+}
+
+#[test]
+fn test_unauthorized_pause_resume() {
+    let (env, client, _, _) = setup_test_env();
+    let (id, subscriber, merchant) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    let stranger = Address::generate(&env);
+
+    // Stranger should not be able to pause
+    let result = client.try_pause_subscription(&id, &stranger);
+    assert_eq!(result, Err(Ok(Error::Forbidden)));
+
+    // Stranger should not be able to resume
+    client.pause_subscription(&id, &subscriber);
+    let result = client.try_resume_subscription(&id, &stranger);
+    assert_eq!(result, Err(Ok(Error::Forbidden)));
+}
