@@ -22,8 +22,8 @@ use crate::safe_math::{safe_add_balance, validate_non_negative};
 use crate::state_machine::validate_status_transition;
 use crate::statements::append_statement;
 use crate::types::{
-    BillingChargeKind, DataKey, Error, PartialRefundEvent, PlanTemplate, PlanTemplateUpdatedEvent,
-    Subscription, SubscriptionMigratedEvent, SubscriptionStatus,
+    BillingChargeKind, DataKey, Error, FundsDepositedEvent, PartialRefundEvent, PlanTemplate,
+    PlanTemplateUpdatedEvent, Subscription, SubscriptionMigratedEvent, SubscriptionStatus,
 };
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
@@ -324,6 +324,10 @@ pub fn do_deposit_funds(
     validate_non_negative(amount)?;
 
     let mut sub = get_subscription(env, subscription_id)?;
+    if subscriber != sub.subscriber {
+        return Err(Error::Forbidden);
+    }
+
     let token_addr = sub.token.clone();
 
     // Enforce credit limit for additional prepaid balance being loaded.
@@ -339,7 +343,12 @@ pub fn do_deposit_funds(
 
     env.events().publish(
         (Symbol::new(env, "deposited"), subscription_id),
-        (subscriber, amount, sub.prepaid_balance),
+        FundsDepositedEvent {
+            subscription_id,
+            subscriber,
+            amount,
+            prepaid_balance: sub.prepaid_balance,
+        },
     );
     Ok(())
 }

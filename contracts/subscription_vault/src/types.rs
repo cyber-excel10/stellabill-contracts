@@ -553,6 +553,7 @@ pub struct FundsDepositedEvent {
     pub subscription_id: u32,
     pub subscriber: Address,
     pub amount: i128,
+    pub prepaid_balance: i128,
 }
 
 /// Event emitted when a subscription interval charge succeeds.
