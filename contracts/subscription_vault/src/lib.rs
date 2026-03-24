@@ -25,6 +25,15 @@ mod state_machine;
 mod statements;
 mod subscription;
 mod types;
+#[cfg(test)]
+mod test;
+#[cfg(test)]
+mod test_refactor_check;
+#[cfg(test)]
+mod test_utils;
+#[cfg(test)]
+mod test_governance;
+
 
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Vec};
 
@@ -968,6 +977,3 @@ impl SubscriptionVault {
     }
 
 }
-
-#[cfg(test)]
-mod test_governance;
