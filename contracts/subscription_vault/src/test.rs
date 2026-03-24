@@ -937,7 +937,10 @@ fn test_batch_charge_matches_single_charge_semantics_for_identical_inputs() {
     let single_snapshots = snapshot_subscriptions(&client_single, &ids_single);
     for (batch_sub, single_sub) in batch_snapshots.iter().zip(single_snapshots.iter()) {
         assert_eq!(batch_sub.prepaid_balance, single_sub.prepaid_balance);
-        assert_eq!(batch_sub.last_payment_timestamp, single_sub.last_payment_timestamp);
+        assert_eq!(
+            batch_sub.last_payment_timestamp,
+            single_sub.last_payment_timestamp
+        );
         assert_eq!(batch_sub.status, single_sub.status);
         assert_eq!(batch_sub.lifetime_charged, single_sub.lifetime_charged);
     }
@@ -982,8 +985,20 @@ fn test_batch_charge_mixed_results_preserve_single_path_order_and_error_codes() 
     env_batch.ledger().set_timestamp(T0 + INTERVAL + 1);
     env_single.ledger().set_timestamp(T0 + INTERVAL + 1);
 
-    let ids_batch = [valid_batch, low_batch, paused_batch, 999_999u32, valid_batch];
-    let ids_single = [valid_single, low_single, paused_single, 999_999u32, valid_single];
+    let ids_batch = [
+        valid_batch,
+        low_batch,
+        paused_batch,
+        999_999u32,
+        valid_batch,
+    ];
+    let ids_single = [
+        valid_single,
+        low_single,
+        paused_single,
+        999_999u32,
+        valid_single,
+    ];
 
     let batch_results = collect_batch_result_codes(&env_batch, &client_batch, &ids_batch);
     let single_results = collect_single_charge_result_codes(&client_single, &ids_single);
@@ -1006,7 +1021,10 @@ fn test_batch_charge_mixed_results_preserve_single_path_order_and_error_codes() 
     let single_snapshots = snapshot_subscriptions(&client_single, &tracked_single);
     for (batch_sub, single_sub) in batch_snapshots.iter().zip(single_snapshots.iter()) {
         assert_eq!(batch_sub.prepaid_balance, single_sub.prepaid_balance);
-        assert_eq!(batch_sub.last_payment_timestamp, single_sub.last_payment_timestamp);
+        assert_eq!(
+            batch_sub.last_payment_timestamp,
+            single_sub.last_payment_timestamp
+        );
         assert_eq!(batch_sub.status, single_sub.status);
     }
 
@@ -1076,7 +1094,10 @@ fn test_batch_charge_failed_items_match_single_path_without_cross_item_side_effe
     let single_snapshots = snapshot_subscriptions(&client_single, &ids_single);
     for (batch_sub, single_sub) in batch_snapshots.iter().zip(single_snapshots.iter()) {
         assert_eq!(batch_sub.prepaid_balance, single_sub.prepaid_balance);
-        assert_eq!(batch_sub.last_payment_timestamp, single_sub.last_payment_timestamp);
+        assert_eq!(
+            batch_sub.last_payment_timestamp,
+            single_sub.last_payment_timestamp
+        );
         assert_eq!(batch_sub.status, single_sub.status);
     }
 
@@ -1113,8 +1134,10 @@ fn test_batch_charge_high_volume_list_matches_single_path_semantics() {
         } else {
             SubscriptionStatus::Active
         };
-        let (id_batch, _, merchant_batch) = create_test_subscription(&env_batch, &client_batch, status.clone());
-        let (id_single, _, merchant_single) = create_test_subscription(&env_single, &client_single, status);
+        let (id_batch, _, merchant_batch) =
+            create_test_subscription(&env_batch, &client_batch, status.clone());
+        let (id_single, _, merchant_single) =
+            create_test_subscription(&env_single, &client_single, status);
 
         let balance = if idx % 2 == 0 { PREPAID } else { AMOUNT - 1 };
         seed_balance(&env_batch, &client_batch, id_batch, balance);
@@ -1146,7 +1169,10 @@ fn test_batch_charge_high_volume_list_matches_single_path_semantics() {
     let single_snapshots = snapshot_subscriptions(&client_single, &ids_single);
     for (batch_sub, single_sub) in batch_snapshots.iter().zip(single_snapshots.iter()) {
         assert_eq!(batch_sub.prepaid_balance, single_sub.prepaid_balance);
-        assert_eq!(batch_sub.last_payment_timestamp, single_sub.last_payment_timestamp);
+        assert_eq!(
+            batch_sub.last_payment_timestamp,
+            single_sub.last_payment_timestamp
+        );
         assert_eq!(batch_sub.status, single_sub.status);
     }
 

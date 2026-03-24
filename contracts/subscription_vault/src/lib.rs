@@ -963,11 +963,17 @@ impl SubscriptionVault {
     }
 
     /// Get the global configuration for a merchant.
-    pub fn get_merchant_config(env: Env, merchant: Address) -> Option<crate::types::MerchantConfig> {
+    pub fn get_merchant_config(
+        env: Env,
+        merchant: Address,
+    ) -> Option<crate::types::MerchantConfig> {
         merchant::get_merchant_config(&env, merchant)
     }
-
 }
 
 #[cfg(test)]
+mod test;
+#[cfg(test)]
 mod test_governance;
+#[cfg(test)]
+mod test_security;
