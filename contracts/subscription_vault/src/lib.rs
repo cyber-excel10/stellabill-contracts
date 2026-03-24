@@ -664,6 +664,42 @@ impl SubscriptionVault {
         merchant::get_merchant_balance_by_token(&env, &merchant, &token)
     }
 
+    /// Get all tokens and their earnings for a merchant.
+    pub fn get_merchant_total_earnings(
+        env: Env,
+        merchant: Address,
+    ) -> Vec<(Address, crate::types::TokenEarnings)> {
+        merchant::get_merchant_total_earnings(&env, &merchant)
+    }
+
+    /// Get detailed earnings for a merchant and specific token.
+    pub fn get_merchant_token_earnings(
+        env: Env,
+        merchant: Address,
+        token: Address,
+    ) -> crate::types::TokenEarnings {
+        merchant::get_merchant_token_earnings(&env, &merchant, &token)
+    }
+
+    /// Get reconciliation snapshots for all tokens a merchant interacts with.
+    pub fn get_reconciliation_snapshot(
+        env: Env,
+        merchant: Address,
+    ) -> Vec<crate::types::TokenReconciliationSnapshot> {
+        merchant::get_reconciliation_snapshot(&env, &merchant)
+    }
+
+    /// Issue a refund from merchant earnings to a subscriber.
+    pub fn merchant_refund(
+        env: Env,
+        merchant: Address,
+        subscriber: Address,
+        token: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        merchant::merchant_refund(&env, merchant, subscriber, token, amount)
+    }
+
     // ── Queries ──────────────────────────────────────────────────────────────
 
     /// Read subscription by id.
