@@ -53,7 +53,10 @@ fn repeated_failed_charges_preserve_financial_state() {
     assert_eq!(first.last_payment_timestamp, T0);
     assert_eq!(first.lifetime_charged, 0);
     assert_eq!(client.get_merchant_balance(&merchant), 0);
-    assert_eq!(client.get_sub_statements_offset(&id, &0, &10, &true).total, 0);
+    assert_eq!(
+        client.get_sub_statements_offset(&id, &0, &10, &true).total,
+        0
+    );
 
     env.ledger().set_timestamp(T0 + INTERVAL + 2);
     assert_eq!(client.try_charge_subscription(&id), Ok(Ok(())));
@@ -64,10 +67,12 @@ fn repeated_failed_charges_preserve_financial_state() {
     assert_eq!(second.last_payment_timestamp, T0);
     assert_eq!(second.lifetime_charged, 0);
     assert_eq!(client.get_merchant_balance(&merchant), 0);
-    assert_eq!(client.get_sub_statements_offset(&id, &0, &10, &true).total, 0);
+    assert_eq!(
+        client.get_sub_statements_offset(&id, &0, &10, &true).total,
+        0
+    );
 
-    env.ledger()
-        .set_timestamp(T0 + INTERVAL + GRACE_PERIOD + 1);
+    env.ledger().set_timestamp(T0 + INTERVAL + GRACE_PERIOD + 1);
     assert_eq!(client.try_charge_subscription(&id), Ok(Ok(())));
 
     let after = client.get_subscription(&id);
@@ -76,7 +81,10 @@ fn repeated_failed_charges_preserve_financial_state() {
     assert_eq!(after.last_payment_timestamp, T0);
     assert_eq!(after.lifetime_charged, 0);
     assert_eq!(client.get_merchant_balance(&merchant), 0);
-    assert_eq!(client.get_sub_statements_offset(&id, &0, &10, &true).total, 0);
+    assert_eq!(
+        client.get_sub_statements_offset(&id, &0, &10, &true).total,
+        0
+    );
 }
 
 #[test]
@@ -88,8 +96,7 @@ fn resume_from_underfunded_state_requires_sufficient_topup() {
     let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token);
     token_admin.mint(&subscriber, &20_000_000i128);
 
-    env.ledger()
-        .set_timestamp(T0 + INTERVAL + GRACE_PERIOD + 1);
+    env.ledger().set_timestamp(T0 + INTERVAL + GRACE_PERIOD + 1);
     assert_eq!(client.try_charge_subscription(&id), Ok(Ok(())));
     assert_eq!(
         client.get_subscription(&id).status,
@@ -117,8 +124,7 @@ fn cancel_from_insufficient_balance_succeeds() {
 
     let (id, subscriber, _merchant) = create_subscription(&env, &client);
 
-    env.ledger()
-        .set_timestamp(T0 + INTERVAL + GRACE_PERIOD + 1);
+    env.ledger().set_timestamp(T0 + INTERVAL + GRACE_PERIOD + 1);
     assert_eq!(client.try_charge_subscription(&id), Ok(Ok(())));
     assert_eq!(
         client.get_subscription(&id).status,
