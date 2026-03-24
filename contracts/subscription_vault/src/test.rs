@@ -844,23 +844,167 @@ fn test_create_subscription_blocked_by_emergency_stop() {
 // -- Batch charge tests -------------------------------------------------------
 
 #[test]
-fn test_batch_charge() {
-    let (env, client, _, admin) = setup_test_env();
-    env.ledger().with_mut(|li| li.timestamp = T0);
-
-    let (id1, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
-    let (id2, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
-    seed_balance(&env, &client, id1, PREPAID);
-    seed_balance(&env, &client, id2, PREPAID);
-
-    env.ledger().with_mut(|li| li.timestamp = T0 + INTERVAL + 1);
-
-    let ids = SorobanVec::from_array(&env, [id1, id2]);
+fn test_batch_charge_empty_list() {
+    let (env, client, _, _admin) = setup_test_env();
+    let ids = SorobanVec::new(&env);
     let results = client.batch_charge(&ids);
-    assert_eq!(results.len(), 2);
-    assert!(results.get(0).unwrap().success);
-    assert!(results.get(1).unwrap().success);
+    assert_eq!(results.len(), 0);
 }
+
+#[test]
+fn test_batch_charge_single_success() {
+    let (env, client, _, _admin) = setup_test_env();
+    env.ledger().set_timestamp(T0);
+    let (id, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    seed_balance(&env, &client, id, PREPAID);
+
+    env.ledger().set_timestamp(T0 + INTERVAL + 1);
+    let ids = SorobanVec::from_array(&env, [id]);
+    let results = client.batch_charge(&ids);
+    
+    assert_eq!(results.len(), 1);
+    let r = results.get(0).unwrap();
+    assert!(r.success);
+    assert_eq!(r.error_code, 0);
+
+    let sub = client.get_subscription(&id);
+    assert_eq!(sub.prepaid_balance, PREPAID - AMOUNT);
+}
+
+#[test]
+fn test_batch_charge_single_not_found() {
+    let (env, client, _, _admin) = setup_test_env();
+    let ids = SorobanVec::from_array(&env, [999u32]);
+    let results = client.batch_charge(&ids);
+    
+    assert_eq!(results.len(), 1);
+    let r = results.get(0).unwrap();
+    assert!(!r.success);
+    assert_eq!(r.error_code, 404);
+}
+
+#[test]
+fn test_batch_charge_mixed_outcomes() {
+    let (env, client, _, _admin) = setup_test_env();
+    env.ledger().set_timestamp(T0);
+
+    // 1. Success
+    let (id1, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    seed_balance(&env, &client, id1, PREPAID);
+
+    // 2. InsufficientBalance
+    let (id2, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    seed_balance(&env, &client, id2, 0);
+
+    // 3. NotActive (Paused)
+    let (id3, subscriber, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    client.pause_subscription(&id3, &subscriber);
+
+    // 4. IntervalNotElapsed
+    let (id4, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    seed_balance(&env, &client, id4, PREPAID);
+
+    // 5. Success (Duplicate of id1, but after enough time it could succeed? No, it's the same call)
+    // Wait, IDs are processed at the same ledger timestamp.
+    
+    env.ledger().set_timestamp(T0 + INTERVAL + 1);
+    
+    // Batch: [id1, id2, id3, id4 (not elapsed)]
+    // For id4, T0 + INTERVAL + 1 is actually elapsed. Let me fix id4.
+    env.as_contract(&client.address, || {
+        let mut sub4 = env.storage().instance().get::<u32, Subscription>(&id4).unwrap();
+        sub4.last_payment_timestamp = T0 + INTERVAL + 100; // Will be in the future
+        env.storage().instance().set(&id4, &sub4);
+    });
+
+    let ids = SorobanVec::from_array(&env, [id1, 999u32, id2, id3, id4]);
+    let results = client.batch_charge(&ids);
+    
+    assert_eq!(results.len(), 5);
+    
+    // id1: Success
+    assert!(results.get(0).unwrap().success);
+    
+    // 999: NotFound (404)
+    assert!(!results.get(1).unwrap().success);
+    assert_eq!(results.get(1).unwrap().error_code, 404);
+    
+    // id2: InsufficientBalance (1003)
+    assert!(!results.get(2).unwrap().success);
+    assert_eq!(results.get(2).unwrap().error_code, 1003);
+    
+    // id3: NotActive (1002)
+    assert!(!results.get(3).unwrap().success);
+    assert_eq!(results.get(3).unwrap().error_code, 1002);
+    
+    // id4: IntervalNotElapsed (1001)
+    assert!(!results.get(4).unwrap().success);
+    assert_eq!(results.get(4).unwrap().error_code, 1001);
+}
+
+#[test]
+fn test_batch_charge_duplicate_ids() {
+    let (env, client, _, _admin) = setup_test_env();
+    env.ledger().set_timestamp(T0);
+    let (id, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+    seed_balance(&env, &client, id, PREPAID * 2);
+
+    env.ledger().set_timestamp(T0 + INTERVAL + 1);
+    let ids = SorobanVec::from_array(&env, [id, id]);
+    let results = client.batch_charge(&ids);
+    
+    assert_eq!(results.len(), 2);
+    // First should succeed
+    assert!(results.get(0).unwrap().success);
+    // Second should fail with Replay (1007)
+    assert!(!results.get(1).unwrap().success);
+    assert_eq!(results.get(1).unwrap().error_code, 1007);
+    
+    let sub = client.get_subscription(&id);
+    assert_eq!(sub.prepaid_balance, PREPAID * 2 - AMOUNT);
+}
+
+#[test]
+fn test_batch_charge_large_batch() {
+    let (env, client, _, _admin) = setup_test_env();
+    env.ledger().set_timestamp(T0);
+    
+    let mut ids = SorobanVec::new(&env);
+    for _ in 0..50 {
+        let (id, _, _) = create_test_subscription(&env, &client, SubscriptionStatus::Active);
+        seed_balance(&env, &client, id, PREPAID);
+        ids.push_back(id);
+    }
+
+    env.ledger().set_timestamp(T0 + INTERVAL + 1);
+    let results = client.batch_charge(&ids);
+    assert_eq!(results.len(), 50);
+    for i in 0..50 {
+        assert!(results.get(i).unwrap().success);
+    }
+}
+
+#[test]
+fn test_batch_charge_admin_auth_check() {
+    let env = Env::default();
+    let contract_id = env.register(SubscriptionVault, ());
+    let client = SubscriptionVaultClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    client.init(&token, &6, &admin, &1_000_000i128, &0u64);
+
+    let ids = SorobanVec::new(&env);
+    
+    // Attempt call without mock_all_auths -> should fail or panic depending on setup
+    // Since we are using try_batch_charge, we expect a Result::Err
+    let result = client.try_batch_charge(&ids);
+    assert!(result.is_err());
+}
+
+
 
 // -- Next charge info test ----------------------------------------------------
 
