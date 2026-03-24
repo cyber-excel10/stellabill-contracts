@@ -38,7 +38,10 @@ pub enum DataKey {
     EmergencyStop,
     /// Merchant-wide pause flag.
     MerchantPaused(Address),
+    /// Global configuration for a merchant.
+    MerchantConfig(Address),
     BillingStatement(u32, u32),
+
     BillingStatementsBySubscription(u32),
     BillingStatementsByMerchant(Address),
 }

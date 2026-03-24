@@ -1,13 +1,16 @@
-//! Merchant payout and accumulated USDC tracking entrypoints.
-//! (Moved functions to top to debug CI visibility issue)
+//! Merchant configuration, pauses, and balance tracking.
 
 use crate::safe_math::validate_non_negative;
-compile_error!("CI IS READING THE LATEST MERCHANT.RS");
-use crate::types::{DataKey, Error, MerchantPausedEvent, MerchantUnpausedEvent};
-
+use crate::types::{DataKey, Error, MerchantConfig, MerchantPausedEvent, MerchantUnpausedEvent};
 use soroban_sdk::{token, Address, Env, Symbol};
 
 pub fn get_merchant_paused(env: &Env, merchant: Address) -> bool {
+    // Check both legacy Pause state and new Config state if they overlap
+    if let Some(config) = get_merchant_config(env, merchant.clone()) {
+        if config.is_paused {
+            return true;
+        }
+    }
     let key = DataKey::MerchantPaused(merchant);
     env.storage().instance().get(&key).unwrap_or(false)
 }
@@ -55,6 +58,22 @@ pub fn unpause_merchant(env: &Env, merchant: Address) -> Result<(), Error> {
     );
 
     Ok(())
+}
+
+pub fn set_merchant_config(
+    env: &Env,
+    merchant: Address,
+    config: MerchantConfig,
+) -> Result<(), Error> {
+    merchant.require_auth();
+    let key = DataKey::MerchantConfig(merchant);
+    env.storage().instance().set(&key, &config);
+    Ok(())
+}
+
+pub fn get_merchant_config(env: &Env, merchant: Address) -> Option<MerchantConfig> {
+    let key = DataKey::MerchantConfig(merchant);
+    env.storage().instance().get(&key)
 }
 
 fn merchant_balance_key(
