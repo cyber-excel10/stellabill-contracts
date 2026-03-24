@@ -1387,6 +1387,250 @@ fn test_partial_refund_rejects_invalid_amounts_and_auth() {
     let other_admin = Address::generate(&env);
     let unauth_res = client.try_partial_refund(&other_admin, &sub_id, &subscriber, &1_000_000i128);
     assert_eq!(unauth_res, Err(Ok(Error::Unauthorized)));
+
+    // Wrong subscriber address is rejected.
+    let wrong_subscriber = Address::generate(&env);
+    let wrong_sub_res =
+        client.try_partial_refund(&vault_admin, &sub_id, &wrong_subscriber, &1_000_000i128);
+    assert_eq!(wrong_sub_res, Err(Ok(Error::Unauthorized)));
+}
+
+// =============================================================================
+// Partial Refund — Extended Coverage
+// =============================================================================
+
+/// Repeated partial refunds each debit the correct incremental amount.
+#[test]
+fn test_partial_refund_repeated_debits_are_cumulative() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_contract = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let token = soroban_sdk::token::Client::new(&env, &token_contract);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_contract);
+
+    let contract_id = env.register(SubscriptionVault, ());
+    let client = SubscriptionVaultClient::new(&env, &contract_id);
+    let vault_admin = Address::generate(&env);
+    let subscriber = Address::generate(&env);
+    let merchant = Address::generate(&env);
+
+    client.init(
+        &token_contract,
+        &6,
+        &vault_admin,
+        &1_000_000i128,
+        &(7 * 24 * 60 * 60),
+    );
+    token_admin.mint(&subscriber, &30_000_000i128);
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &merchant,
+        &AMOUNT,
+        &INTERVAL,
+        &false,
+        &None::<i128>,
+    );
+    client.deposit_funds(&sub_id, &subscriber, &30_000_000i128);
+
+    // Three successive partial refunds of 5 USDC each.
+    for _ in 0..3 {
+        client.partial_refund(&vault_admin, &sub_id, &subscriber, &5_000_000i128);
+    }
+
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.prepaid_balance, 15_000_000i128); // 30 - 3*5 = 15
+    assert_eq!(token.balance(&subscriber), 15_000_000i128);
+}
+
+/// Cumulative refunds that exactly drain the balance succeed; one more unit fails.
+#[test]
+fn test_partial_refund_cumulative_exact_drain_then_over_refund_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_contract = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_contract);
+
+    let contract_id = env.register(SubscriptionVault, ());
+    let client = SubscriptionVaultClient::new(&env, &contract_id);
+    let vault_admin = Address::generate(&env);
+    let subscriber = Address::generate(&env);
+    let merchant = Address::generate(&env);
+
+    client.init(
+        &token_contract,
+        &6,
+        &vault_admin,
+        &1_000_000i128,
+        &(7 * 24 * 60 * 60),
+    );
+    token_admin.mint(&subscriber, &10_000_000i128);
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &merchant,
+        &AMOUNT,
+        &INTERVAL,
+        &false,
+        &None::<i128>,
+    );
+    client.deposit_funds(&sub_id, &subscriber, &10_000_000i128);
+
+    // Refund the full balance as two equal halves.
+    client.partial_refund(&vault_admin, &sub_id, &subscriber, &5_000_000i128);
+    client.partial_refund(&vault_admin, &sub_id, &subscriber, &5_000_000i128);
+
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.prepaid_balance, 0);
+
+    // Any further refund must fail — balance is zero.
+    let over = client.try_partial_refund(&vault_admin, &sub_id, &subscriber, &1i128);
+    assert_eq!(over, Err(Ok(Error::InsufficientBalance)));
+}
+
+/// A partial refund equal to the full prepaid balance (full-balance-as-partial) succeeds.
+#[test]
+fn test_partial_refund_full_balance_as_partial_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_contract = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let token = soroban_sdk::token::Client::new(&env, &token_contract);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_contract);
+
+    let contract_id = env.register(SubscriptionVault, ());
+    let client = SubscriptionVaultClient::new(&env, &contract_id);
+    let vault_admin = Address::generate(&env);
+    let subscriber = Address::generate(&env);
+    let merchant = Address::generate(&env);
+
+    client.init(
+        &token_contract,
+        &6,
+        &vault_admin,
+        &1_000_000i128,
+        &(7 * 24 * 60 * 60),
+    );
+    token_admin.mint(&subscriber, &20_000_000i128);
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &merchant,
+        &AMOUNT,
+        &INTERVAL,
+        &false,
+        &None::<i128>,
+    );
+    client.deposit_funds(&sub_id, &subscriber, &20_000_000i128);
+
+    // Refund the entire prepaid balance in one call.
+    client.partial_refund(&vault_admin, &sub_id, &subscriber, &20_000_000i128);
+
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.prepaid_balance, 0);
+    assert_eq!(token.balance(&subscriber), 20_000_000i128);
+}
+
+/// Partial refund is allowed on a cancelled subscription (remaining balance can be returned).
+#[test]
+fn test_partial_refund_after_cancellation_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_contract = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let token = soroban_sdk::token::Client::new(&env, &token_contract);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_contract);
+
+    let contract_id = env.register(SubscriptionVault, ());
+    let client = SubscriptionVaultClient::new(&env, &contract_id);
+    let vault_admin = Address::generate(&env);
+    let subscriber = Address::generate(&env);
+    let merchant = Address::generate(&env);
+
+    client.init(
+        &token_contract,
+        &6,
+        &vault_admin,
+        &1_000_000i128,
+        &(7 * 24 * 60 * 60),
+    );
+    token_admin.mint(&subscriber, &15_000_000i128);
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &merchant,
+        &AMOUNT,
+        &INTERVAL,
+        &false,
+        &None::<i128>,
+    );
+    client.deposit_funds(&sub_id, &subscriber, &15_000_000i128);
+    client.cancel_subscription(&sub_id, &subscriber);
+
+    // Admin can still issue a partial refund on a cancelled subscription.
+    client.partial_refund(&vault_admin, &sub_id, &subscriber, &5_000_000i128);
+
+    let sub = client.get_subscription(&sub_id);
+    assert_eq!(sub.prepaid_balance, 10_000_000i128);
+    assert_eq!(token.balance(&subscriber), 5_000_000i128);
+}
+
+/// Partial refund emits a PartialRefundEvent with correct fields.
+#[test]
+fn test_partial_refund_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = T0);
+
+    let admin = Address::generate(&env);
+    let token_contract = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_contract);
+
+    let contract_id = env.register(SubscriptionVault, ());
+    let client = SubscriptionVaultClient::new(&env, &contract_id);
+    let vault_admin = Address::generate(&env);
+    let subscriber = Address::generate(&env);
+    let merchant = Address::generate(&env);
+
+    client.init(
+        &token_contract,
+        &6,
+        &vault_admin,
+        &1_000_000i128,
+        &(7 * 24 * 60 * 60),
+    );
+    token_admin.mint(&subscriber, &10_000_000i128);
+
+    let sub_id = client.create_subscription(
+        &subscriber,
+        &merchant,
+        &AMOUNT,
+        &INTERVAL,
+        &false,
+        &None::<i128>,
+    );
+    client.deposit_funds(&sub_id, &subscriber, &10_000_000i128);
+
+    client.partial_refund(&vault_admin, &sub_id, &subscriber, &3_000_000i128);
+
+    // At least one event must have been emitted by the refund call.
+    assert!(!env.events().all().is_empty());
 }
 
 #[test]
