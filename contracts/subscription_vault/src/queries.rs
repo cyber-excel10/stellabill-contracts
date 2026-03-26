@@ -4,7 +4,7 @@
 
 use crate::types::{CapInfo, DataKey, Error, NextChargeInfo, Subscription, SubscriptionStatus};
 use crate::safe_math::{safe_mul, safe_sub};
-use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, token, Address, Env, Symbol, Vec};
 
 pub fn get_subscription(env: &Env, subscription_id: u32) -> Result<Subscription, Error> {
     env.storage()

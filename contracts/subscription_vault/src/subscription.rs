@@ -22,8 +22,10 @@ use crate::safe_math::{safe_add, safe_add_balance, safe_sub, validate_non_negati
 use crate::state_machine::validate_status_transition;
 use crate::statements::append_statement;
 use crate::types::{
-    BillingChargeKind, DataKey, Error, PartialRefundEvent, PlanTemplate, PlanTemplateUpdatedEvent,
-    Subscription, SubscriptionMigratedEvent, SubscriptionStatus, UsageLimits, UsageState,
+    BillingChargeKind, DataKey, Error, FundsDepositedEvent, PartialRefundEvent, PlanTemplate,
+    PlanTemplateUpdatedEvent, PlanMaxActiveUpdatedEvent, SubscriberWithdrawalEvent, Subscription,
+    SubscriptionCancelledEvent, SubscriptionMigratedEvent, SubscriptionRecoveryReadyEvent,
+    SubscriptionRecoveryReadyEvent as SubscriptionRecoveryReadyEventAlias, SubscriptionStatus, UsageLimits, UsageState,
 };
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
@@ -352,14 +354,25 @@ pub fn do_deposit_funds(
         || sub.status == SubscriptionStatus::GracePeriod)
         && sub.prepaid_balance >= sub.amount
     {
+        sub.status = SubscriptionStatus::Active;
+        env.storage().instance().set(&subscription_id, &sub);
+
         env.events().publish(
             (Symbol::new(env, "recovery_ready"), subscription_id),
             SubscriptionRecoveryReadyEvent {
                 subscription_id,
-                subscriber: sub.subscriber,
+                subscriber: sub.subscriber.clone(),
                 prepaid_balance: sub.prepaid_balance,
                 required_amount: sub.amount,
                 timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        env.events().publish(
+            (Symbol::new(env, "sub_resumed"), subscription_id),
+            crate::types::SubscriptionResumedEvent {
+                subscription_id,
+                authorizer: sub.subscriber.clone(),
             },
         );
     }

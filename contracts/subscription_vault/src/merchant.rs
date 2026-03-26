@@ -12,10 +12,12 @@
 //!
 //! See `docs/reentrancy.md` for details on the reentrancy threat model and mitigation.
 
-use crate::types::MerchantConfig;
 use crate::safe_math::{safe_add, safe_sub, validate_non_negative};
-use crate::types::Error;
-use soroban_sdk::{token, Address, Env, Symbol};
+use crate::types::{
+    AccruedTotals, BillingChargeKind, DataKey, Error, MerchantConfig, MerchantPausedEvent,
+    MerchantUnpausedEvent, MerchantWithdrawalEvent, TokenEarnings, TokenReconciliationSnapshot,
+};
+use soroban_sdk::{token, Address, Env, Symbol, Vec};
 
 pub fn get_merchant_paused(env: &Env, merchant: Address) -> bool {
     // Check both legacy Pause state and new Config state if they overlap
@@ -284,6 +286,12 @@ pub fn withdraw_merchant_funds_for_token(
         return Err(Error::InsufficientBalance);
     }
 
+    // Explicitly check vault's actual token balance before attempting transfer
+    let token_client = token::Client::new(env, &token_addr);
+    if token_client.balance(&env.current_contract_address()) < amount {
+        return Err(Error::InsufficientBalance);
+    }
+
     let new_balance = safe_sub(current, amount)?;
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -306,8 +314,10 @@ pub fn withdraw_merchant_funds_for_token(
 
     // ──────────────────────────────────────────────────────────────────────────
     // INTERACTIONS: Only after internal state is consistent, call token contract
-    // This ensures that even if token contract calls back, our state is correct
+    // INTERACTIONS: Only after internal state is consistent, call token contract
     // ──────────────────────────────────────────────────────────────────────────
+    let token_client = token::Client::new(env, &token_addr);
+    let contract = env.current_contract_address();
     token_client.transfer(&contract, &merchant, &amount);
 
     Ok(())
