@@ -36,6 +36,8 @@ pub enum DataKey {
     IdemKey(u32),
     /// Emergency stop flag - when true, critical operations are blocked. Discriminant 9.
     EmergencyStop,
+    /// Merchant-wide pause flag.
+    MerchantPaused(Address),
     BillingStatement(u32, u32),
     BillingStatementsBySubscription(u32),
     BillingStatementsByMerchant(Address),
@@ -238,6 +240,8 @@ pub enum Error {
     LifetimeCapReached = 1017,
     /// Contract is already initialized; init may only be called once.
     AlreadyInitialized = 1018,
+    /// Merchant-wide pause is active for this subscription.
+    MerchantPaused = 1019,
 
     // --- Metadata Errors (1023-1025) ---
     /// Metadata key limit reached for this subscription.
@@ -302,6 +306,7 @@ impl Error {
             Error::Reentrancy => 1016,
             Error::LifetimeCapReached => 1017,
             Error::AlreadyInitialized => 1018,
+            Error::MerchantPaused => 1019,
             Error::MetadataKeyLimitReached => 1023,
             Error::MetadataKeyTooLong => 1024,
             Error::MetadataValueTooLong => 1025,
@@ -611,6 +616,7 @@ pub struct FundsDepositedEvent {
     pub subscription_id: u32,
     pub subscriber: Address,
     pub amount: i128,
+    pub prepaid_balance: i128,
 }
 
 /// Event emitted when a subscription interval charge succeeds.
@@ -653,7 +659,9 @@ pub struct SubscriptionResumedEvent {
 #[derive(Clone, Debug)]
 pub struct MerchantWithdrawalEvent {
     pub merchant: Address,
+    pub token: Address,
     pub amount: i128,
+    pub remaining_balance: i128,
 }
 
 /// Event emitted when a subscriber withdraws funds after cancellation.
@@ -768,12 +776,18 @@ pub struct MerchantConfig {
     pub is_paused: bool,      // Global pause for all merchant plans
 }
 
-/// Event emitted when a merchant issues a refund from their earnings.
+/// Event emitted when a merchant enables their blanket pause.
 #[contracttype]
 #[derive(Clone, Debug)]
-pub struct MerchantRefundEvent {
+pub struct MerchantPausedEvent {
     pub merchant: Address,
-    pub subscriber: Address,
-    pub token: Address,
-    pub amount: i128,
+    pub timestamp: u64,
+}
+
+/// Event emitted when a merchant disables their blanket pause.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct MerchantUnpausedEvent {
+    pub merchant: Address,
+    pub timestamp: u64,
 }
