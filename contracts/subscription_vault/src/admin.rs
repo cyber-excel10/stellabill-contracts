@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-use crate::charge_core::{charge_one, ChargeExecutionResult};
+use crate::{charge_core::charge_one, ChargeExecutionResult};
 use crate::types::{
     AcceptedToken, AdminRotatedEvent, BatchChargeResult, DataKey, Error, RecoveryEvent,
     RecoveryReason, SubscriptionStatus,

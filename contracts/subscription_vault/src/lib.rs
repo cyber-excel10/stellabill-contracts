@@ -24,6 +24,8 @@ pub mod safe_math;
 mod state_machine;
 mod statements;
 mod subscription;
+#[cfg(test)]
+mod test;
 mod types;
 #[cfg(test)]
 mod test;
@@ -39,6 +41,11 @@ mod test_insufficient_balance;
 mod test_security;
 
 
+#[cfg(test)]
+mod test_safe_math_regression;
+#[cfg(test)]
+mod test_usage_limits;
+
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Vec};
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
@@ -48,16 +55,16 @@ pub use state_machine::{can_transition, get_allowed_transitions, validate_status
 pub use types::{
     AcceptedToken, AdminRotatedEvent, BatchChargeResult, BatchWithdrawResult, BillingChargeKind,
     BillingCompactedEvent, BillingCompactionSummary, BillingRetentionConfig, BillingStatement,
-    BillingStatementAggregate, BillingStatementsPage, CapInfo, ContractSnapshot, DataKey,
+    BillingStatementAggregate, BillingStatementsPage, CapInfo, ChargeExecutionResult, ContractSnapshot, DataKey,
     EmergencyStopDisabledEvent, EmergencyStopEnabledEvent, Error, FundsDepositedEvent,
     LifetimeCapReachedEvent, MerchantPausedEvent, MerchantUnpausedEvent, MerchantWithdrawalEvent,
     MetadataDeletedEvent, MetadataSetEvent, MigrationExportEvent, NextChargeInfo,
     OneOffChargedEvent, OracleConfig, OraclePrice, PartialRefundEvent, PlanTemplate,
-    PlanTemplateUpdatedEvent, PlanMaxActiveUpdatedEvent, RecoveryEvent, RecoveryReason, Subscription,
+    PlanTemplateUpdatedEvent, RecoveryEvent, RecoveryReason, Subscription,
     SubscriptionCancelledEvent, SubscriptionChargedEvent, SubscriptionChargeFailedEvent, SubscriptionCreatedEvent,
     SubscriptionMigratedEvent, SubscriptionPausedEvent, SubscriptionResumedEvent,
-    SubscriptionRecoveryReadyEvent, SubscriptionStatus, SubscriptionSummary, SubscriberWithdrawalEvent,
-    UsageLimits, UsageState, UsageStatementEvent, MerchantRefundEvent,
+    SubscriptionStatus, SubscriptionSummary, UsageLimits, UsageState, UsageStatementEvent,
+    AccruedTotals, MerchantConfig, TokenEarnings, TokenReconciliationSnapshot,
     MAX_METADATA_KEYS, MAX_METADATA_KEY_LENGTH, MAX_METADATA_VALUE_LENGTH,
 };
 /// Maximum subscription ID this contract will ever allocate.
@@ -631,12 +638,15 @@ impl SubscriptionVault {
     }
 
     /// Merchant-initiated one-off charge against the subscription's prepaid balance.
+    ///
+    /// **This function is disabled when the emergency stop is active.**
     pub fn charge_one_off(
         env: Env,
         subscription_id: u32,
         merchant: Address,
         amount: i128,
     ) -> Result<(), Error> {
+        require_not_emergency_stop(&env)?;
         subscription::do_charge_one_off(&env, subscription_id, merchant, amount)
     }
 
@@ -649,10 +659,9 @@ impl SubscriptionVault {
     /// Enforces strict interval timing and replay protection. Underfunded attempts
     /// move the subscription into a recoverable non-active state and emit a
     /// charge-failed event without mutating financial accounting fields.
-    pub fn charge_subscription(env: Env, subscription_id: u32) -> Result<(), Error> {
+    pub fn charge_subscription(env: Env, subscription_id: u32) -> Result<ChargeExecutionResult, Error> {
         require_not_emergency_stop(&env)?;
-        charge_core::charge_one(&env, subscription_id, env.ledger().timestamp(), None)?;
-        Ok(())
+        charge_core::charge_one(&env, subscription_id, env.ledger().timestamp(), None)
     }
 
     /// Charge a metered usage amount against the subscription's prepaid balance.
@@ -742,6 +751,33 @@ impl SubscriptionVault {
     /// Disable a blanket pause for the merchant's subscriptions.
     pub fn unpause_merchant(env: Env, merchant: Address) -> Result<(), Error> {
         merchant::unpause_merchant(&env, merchant)
+    }
+
+    /// Process a refund from merchant balance back to a subscriber.
+    pub fn merchant_refund(
+        env: Env,
+        merchant: Address,
+        subscriber: Address,
+        token: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        merchant::merchant_refund(&env, merchant, subscriber, token, amount)
+    }
+
+    /// Get a reconciliation snapshot for all tokens used by a merchant.
+    pub fn get_reconciliation_snapshot(
+        env: Env,
+        merchant: Address,
+    ) -> Vec<crate::types::TokenReconciliationSnapshot> {
+        merchant::get_reconciliation_snapshot(&env, &merchant)
+    }
+
+    /// Get total accrued earnings per token for a merchant.
+    pub fn get_merchant_total_earnings(
+        env: Env,
+        merchant: Address,
+    ) -> Vec<(Address, crate::types::TokenEarnings)> {
+        merchant::get_merchant_total_earnings(&env, &merchant)
     }
 
     // ── Queries ──────────────────────────────────────────────────────────────
@@ -927,7 +963,7 @@ impl SubscriptionVault {
             &env,
             subscription_id,
             keep_recent_override,
-        );
+        )?;
         env.events().publish(
             (Symbol::new(&env, "billing_compacted"), subscription_id),
             BillingCompactedEvent {
@@ -1050,6 +1086,3 @@ impl SubscriptionVault {
         merchant::get_merchant_config(&env, merchant)
     }
 }
-
-#[cfg(test)]
-mod test_usage_limits;
